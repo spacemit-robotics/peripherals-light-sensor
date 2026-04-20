@@ -44,7 +44,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # ---- Link STK ALPS static library for W1160 ----
-set(STK_ALPS_STATIC_LIB "${CMAKE_CURRENT_SOURCE_DIR}/src/drivers/drv_i2c_w1160/libstk_alps_lib.a" 
+set(STK_ALPS_STATIC_LIB "${CMAKE_CURRENT_SOURCE_DIR}/src/drivers/drv_i2c_w1160/libstk_alps_lib.a"
     CACHE FILEPATH "Path to libstk_alps_lib.a")
 if(EXISTS "${STK_ALPS_STATIC_LIB}")
     target_link_libraries(light_sensor PRIVATE ${STK_ALPS_STATIC_LIB})
@@ -61,6 +61,11 @@ install(TARGETS light_sensor
 install(FILES include/light_sensor.h
     DESTINATION include
 )
+if(EXISTS "${STK_ALPS_STATIC_LIB}")
+    install(FILES "${STK_ALPS_STATIC_LIB}"
+        DESTINATION lib
+    )
+endif()
 option(BUILD_TESTS "Build test programs" OFF)
 if(BUILD_TESTS)
     add_executable(test_light_sensor_i2c test/test_light_sensor_i2c.c)
