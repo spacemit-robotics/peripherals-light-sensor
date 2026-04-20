@@ -32,7 +32,7 @@
 
 #define ALS_FIFO_DATA_MAX     512
 #define ALS_READ_FIFO_BYTE    64
-#define ALS_TARGET_FIFO_DATA  64
+#define ALS_TARGET_FIFO_DATA  8
 
 #define W1160_ALS0_MAX_GAIN 1024*4*6
 #define W1160_ALS1_MAX_GAIN 1024*4*2
@@ -74,7 +74,7 @@ struct w1160_i2c_priv {
 static void w1160_Init(int _file);
 static uint32_t w1160_enable_ALS(int _file);
 static uint32_t w1160_DisEnable_ALS(int _file);
-static float getAls(int _file, float *last_lux);
+static int getAls(int _file, float *last_lux, float *lux_out);
 static void w1160_Delay(uint16_t ms);
 static void w1160_sw_reset(int _file);
 static void w1160_PowerOn(int _file);
@@ -349,7 +349,7 @@ static bool ReadFifoData(int _file, uint32_t *alsData)
     }
 }
 
-static float getAls(int _file, float *last_lux)
+static int getAls(int _file, float *last_lux, float *lux_out)
 {
     uint32_t als_FifoData[ALS_TARGET_FIFO_DATA];
     ChannelDataSet fifoData;
@@ -359,37 +359,45 @@ static float getAls(int _file, float *last_lux)
     uint32_t ret = 0;
     float last_luxData = last_lux ? *last_lux : 0;
 
-    // read FIFO data, save into als_FifoData[0-128]
-    if (ReadFifoData(_file, als_FifoData)) {
-        // Convert Sensor FIFO Data to ChannelDataSet Structure
-        fifoData.ChannelG = als_FifoData;
-        fifoData.Size = ALS_TARGET_FIFO_DATA;
-
-        ret = STK_calcAmbientInfobyFIFO(STK_ALGO_INSTANCE_ID, &fifoData, &ambientData, 255, true);
-
-        if (ret == 0 || ret == 0x10 || ret == 0x20 || ret == 0x2) {
-            luxData = ambientData.ChannelG * (float)scale / (float)1000;
-            if (last_lux) *last_lux = luxData;
-            scl_log_debug("Ambient Raw: %u,Lux: %f, Scale: %d\n", ambientData.ChannelG, luxData, scale);
-
-            scl_log_debug("Ambient ALS: %u\n", ambientData.ChannelG);
-            scl_log_debug("Scale: %d\n", scale);
-            scl_log_debug("Lux: %f\n", luxData);
-
-            ChannelData maxData, minData, midData;
-            STK_outputDebugInfo(&fifoData, &maxData, &minData, &midData);
-
-            scl_log_debug("Max-Min: %u, %u\n", maxData.ChannelG, minData.ChannelG);
-        } else {
-            scl_log_debug("ret =0x%0x\n", ret);
-            luxData = last_luxData;
-            scl_log_debug("Last Lux: %f\n", luxData);
-        }
-    } else {
-        scl_log_debug("[ALS] FIFO not ready!\n");
-        luxData = last_luxData;
+    if (!lux_out) {
+        return -EINVAL;
     }
-    return luxData;
+
+    // read FIFO data, save into als_FifoData[0-128]
+    if (!ReadFifoData(_file, als_FifoData)) {
+        scl_log_debug("[ALS] FIFO not ready!\n");
+        return -EAGAIN;
+    }
+
+    // Convert Sensor FIFO Data to ChannelDataSet Structure
+    fifoData.ChannelG = als_FifoData;
+    fifoData.Size = ALS_TARGET_FIFO_DATA;
+
+    ret = STK_calcAmbientInfobyFIFO(STK_ALGO_INSTANCE_ID, &fifoData, &ambientData, 255, true);
+
+    if (ret == 0 || ret == 0x10 || ret == 0x20 || ret == 0x2) {
+        luxData = ambientData.ChannelG * (float)scale / (float)1000;
+        if (last_lux) {
+            *last_lux = luxData;
+        }
+        *lux_out = luxData;
+        scl_log_debug("Ambient Raw: %u,Lux: %f, Scale: %d\n", ambientData.ChannelG, luxData, scale);
+
+        scl_log_debug("Ambient ALS: %u\n", ambientData.ChannelG);
+        scl_log_debug("Scale: %d\n", scale);
+        scl_log_debug("Lux: %f\n", luxData);
+
+        ChannelData maxData, minData, midData;
+        STK_outputDebugInfo(&fifoData, &maxData, &minData, &midData);
+
+        scl_log_debug("Max-Min: %u, %u\n", maxData.ChannelG, minData.ChannelG);
+        return 0;
+    }
+
+    scl_log_debug("ret =0x%0x\n", ret);
+    *lux_out = last_luxData;
+    scl_log_debug("Last Lux: %f\n", *lux_out);
+    return 0;
 }
 
 static uint32_t w1160_enable_ALS(int _file)
@@ -477,6 +485,7 @@ static int w1160_i2c_poll(struct light_sensor_dev *dev, uint32_t *light_value)
     struct w1160_i2c_priv *priv;
     float lux;
     int lock_fd;
+    int rc;
 
     if (!dev || !dev->priv_data || !light_value)
         return -1;
@@ -493,15 +502,16 @@ static int w1160_i2c_poll(struct light_sensor_dev *dev, uint32_t *light_value)
         return -1;
     }
 
-    lux = getAls(priv->fd, &priv->last_lux_data);
-    *light_value = (uint32_t)lux;
-
-    scl_log_debug("poll: lux=%f => %u\n", lux, *light_value);
+    rc = getAls(priv->fd, &priv->last_lux_data, &lux);
+    if (rc == 0) {
+        *light_value = (uint32_t)lux;
+        scl_log_debug("poll: lux=%f => %u\n", lux, *light_value);
+    }
 
     /* Release lock after reading complete */
     w1160_lock_release(lock_fd);
 
-    return 0;
+    return rc;
 }
 
 static void w1160_i2c_free(struct light_sensor_dev *dev)

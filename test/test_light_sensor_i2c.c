@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <unistd.h>
 
 #include "../include/light_sensor.h"
@@ -48,6 +49,8 @@ int main(int argc, char **argv)
         int ret = light_sensor_poll(dev, &light_value);
         if (ret == 0) {
             printf("[%d] Light value: %u lux\n", i, light_value);
+        } else if (ret == -EAGAIN) {
+            printf("[%d] No new FIFO data yet\n", i);
         } else {
             printf("[%d] Poll failed (ret=%d)\n", i, ret);
         }
