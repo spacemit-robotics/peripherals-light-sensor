@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(light_sensor LANGUAGES C)
+if(NOT DEFINED SROBOTIS_EXPORT_SET)
+    set(SROBOTIS_EXPORT_SET "ComponentsTargets" CACHE STRING "Export set name used by exported targets")
+endif()
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 include_directories(
@@ -14,21 +17,37 @@ set(LIGHT_SENSOR_CORE_SOURCES
 )
 # Drivers (selected by list variable)
 set(LIGHT_SENSOR_DRIVER_SOURCES "")
-foreach(_drv IN LISTS SROBOTIS_PERIPHERALS_LIGHT_SENSOR_ENABLED_DRIVERS)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/drivers/${_drv}.c")
-        list(APPEND LIGHT_SENSOR_DRIVER_SOURCES "src/drivers/${_drv}.c")
+function(light_sensor_append_driver_source driver_name)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/drivers/${driver_name}.c")
+        set(_driver_source "src/drivers/${driver_name}.c")
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/drivers/${driver_name}/${driver_name}.c")
+        set(_driver_source "src/drivers/${driver_name}/${driver_name}.c")
     else()
-        message(FATAL_ERROR "light_sensor: enabled driver '${_drv}' not found at src/drivers/${_drv}.c")
+        message(FATAL_ERROR
+            "light_sensor: enabled driver '${driver_name}' not found. Tried:\n"
+            "  - src/drivers/${driver_name}.c\n"
+            "  - src/drivers/${driver_name}/${driver_name}.c"
+        )
     endif()
+
+    list(FIND LIGHT_SENSOR_DRIVER_SOURCES "${_driver_source}" _driver_idx)
+    if(_driver_idx EQUAL -1)
+        list(APPEND LIGHT_SENSOR_DRIVER_SOURCES "${_driver_source}")
+        set(LIGHT_SENSOR_DRIVER_SOURCES "${LIGHT_SENSOR_DRIVER_SOURCES}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+foreach(_drv IN LISTS SROBOTIS_PERIPHERALS_LIGHT_SENSOR_ENABLED_DRIVERS)
+    light_sensor_append_driver_source("${_drv}")
 endforeach()
 # Always include generic I2C driver
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/drivers/drv_i2c_generic.c")
-    list(APPEND LIGHT_SENSOR_DRIVER_SOURCES "src/drivers/drv_i2c_generic.c")
+    light_sensor_append_driver_source("drv_i2c_generic")
 endif()
 
 # Always include W1160 driver
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/drivers/drv_i2c_w1160/drv_i2c_w1160.c")
-    list(APPEND LIGHT_SENSOR_DRIVER_SOURCES "src/drivers/drv_i2c_w1160/drv_i2c_w1160.c")
+    light_sensor_append_driver_source("drv_i2c_w1160")
 endif()
 
 set(LIGHT_SENSOR_SOURCES
