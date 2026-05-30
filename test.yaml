@@ -1,0 +1,36 @@
+## Copyright (C) 2026 SpacemiT (Hangzhou) Technology Co. Ltd.
+## SPDX-License-Identifier: Apache-2.0
+
+module: components/peripherals/light_sensor
+
+tests:
+  - name: light-sensor-api-functional
+    description: Verifies light sensor init and repeated lux polling behavior using a mock I2C driver.
+    category: functional
+    scopes: [pr, scheduled]
+    timeout_s: 120
+    workdir: sdk
+    command: |
+      bash components/peripherals/light_sensor/tests/test_light_sensor_api_contract.sh functional
+
+  - name: light-sensor-api-error-paths
+    description: Verifies null inputs, malformed driver names, missing drivers, and polling before init.
+    category: functional
+    scopes: [pr, scheduled]
+    timeout_s: 120
+    workdir: sdk
+    command: |
+      bash components/peripherals/light_sensor/tests/test_light_sensor_api_contract.sh error-paths
+
+  - name: light-sensor-w1160-hardware-smoke
+    description: Manually verifies the W1160 I2C light sensor initializes and returns at least one light value.
+    category: functional
+    scopes: [manual]
+    timeout_s: 180
+    workdir: sdk
+    requires:
+      hardware:
+        - W1160 light sensor on LIGHT_SENSOR_I2C_DEV, default /dev/i2c-5.
+      supervision: true
+    command: |
+      bash components/peripherals/light_sensor/tests/test_hw_w1160_i2c_smoke.sh
