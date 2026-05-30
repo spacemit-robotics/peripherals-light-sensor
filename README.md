@@ -39,7 +39,7 @@ make -j
 ```bash
 sudo ./build/./test_light_sensor_i2c
 ```
-代码示例可参考test/test_light_sensor_i2c.c
+代码示例可参考example/test_light_sensor_i2c.c
 
 
 
